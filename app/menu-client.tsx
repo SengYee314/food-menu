@@ -60,7 +60,19 @@ export default function MenuClient() {
       const saved = sessionStorage.getItem("kml-cart");
       if (saved) setCart(JSON.parse(saved) as Cart);
       const previous = localStorage.getItem("kml-last-order");
-      if (previous) setLastOrder(JSON.parse(previous));
+      if (previous) {
+        const parsed = JSON.parse(previous) as { token: string; number: number };
+        if (/^[a-f0-9]{64}$/.test(parsed.token) && Number.isInteger(parsed.number)) {
+          void fetch(`/api/orders/${parsed.token}`, { cache: "no-store" }).then((response) => {
+            if (response.ok) setLastOrder(parsed);
+            else if (response.status === 404) {
+              try { localStorage.removeItem("kml-last-order"); } catch { /* optional storage */ }
+            }
+          }).catch(() => setLastOrder(parsed));
+        } else {
+          localStorage.removeItem("kml-last-order");
+        }
+      }
     } catch {
       // Storage is optional. Ordering still works when it is blocked.
     }
