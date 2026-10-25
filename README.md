@@ -26,3 +26,7 @@ Run the stock reservation tests with `python3 -m unittest discover -s tests -v`.
 The order page updates every few seconds. Customers can enable sound and vibration while it stays open, plus a browser notification when supported and permitted. Closed-phone alerts are not active. No phone number is collected and no SMS is sent. SMS would require a paid provider and a registered sender number; iPhone web push would require the customer to add the site to the Home Screen and opt in.
 
 The QR code should be generated only after the final public URL and ordering flow are verified.
+
+## Hosted access
+
+The existing Site was replaced and renamed to `https://kawan-makan-lah.snu-chatgpt-5678.chatgpt.site`. This SNU workspace currently has public Sites publishing disabled, so the Site remains owner-only. A workspace administrator must enable public publishing, or the app must move to another public Worker/D1 host before customers can use a QR code.
