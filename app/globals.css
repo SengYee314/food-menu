@@ -187,6 +187,7 @@ img { display: block; max-width: 100%; }
 .status-actions { display: flex; justify-content: center; gap: 22px; padding: 23px 0 0; }
 .status-actions button, .status-actions a { border: 0; padding: 10px 0; background: transparent; color: var(--muted); font-size: 12px; text-underline-offset: 3px; }
 .status-actions a { text-decoration: underline; }
+.copy-error { margin: 0; color: var(--muted); font-size: 12px; text-align: center; }
 .status-loading { color: var(--muted); }
 .status-failure { padding: 30px 20px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); }
 .status-failure h1 { margin: 0 0 8px; font-size: 24px; }

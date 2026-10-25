@@ -28,6 +28,7 @@ export default function OrderStatus({ token }: { token: string }) {
   const [error, setError] = useState("");
   const [alertEnabled, setAlertEnabled] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [copyError, setCopyError] = useState("");
   const previousStatus = useRef<Status | null>(null);
   const alertEnabledRef = useRef(false);
   const soundContext = useRef<AudioContext | null>(null);
@@ -92,10 +93,12 @@ export default function OrderStatus({ token }: { token: string }) {
 
   async function copyLink() {
     try {
+      if (!navigator.clipboard?.writeText) throw new Error("Clipboard unavailable");
       await navigator.clipboard.writeText(window.location.href);
       setCopied(true);
+      setCopyError("");
       window.setTimeout(() => setCopied(false), 2500);
-    } catch { /* The current page URL remains visible in the browser. */ }
+    } catch { setCopyError("Copy is unavailable here. Share this page address from your browser."); }
   }
 
   const currentStep = order ? steps.findIndex((step) => step.key === order.status) : 0;
@@ -129,6 +132,7 @@ export default function OrderStatus({ token }: { token: string }) {
         </section>
         {error && <p className="stale-warning" role="status">Connection interrupted. Showing the last update. <button onClick={() => void refresh()}>Refresh</button></p>}
         <div className="status-actions"><button onClick={() => void copyLink()}>{copied ? "Link copied" : "Copy order link"}</button><a href="/">Back to menu</a></div>
+        {copyError && <p className="copy-error" role="status">{copyError}</p>}
       </>}
     </div>
   </main>;

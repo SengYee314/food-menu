@@ -32,6 +32,11 @@ function quantityLabel(count: number) {
   return `${count} ${count === 1 ? "item" : "items"}`;
 }
 
+function newSubmissionKey() {
+  const bytes = crypto.getRandomValues(new Uint8Array(16));
+  return Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("");
+}
+
 export default function MenuClient() {
   const [menu, setMenu] = useState<MenuResponse | null>(null);
   const [loadError, setLoadError] = useState("");
@@ -117,8 +122,8 @@ export default function MenuClient() {
     if (!lines.length || submitting || menu?.paused) return;
     setSubmitting(true);
     setSubmitError("");
-    if (!submissionKey.current) submissionKey.current = crypto.randomUUID();
     try {
+      if (!submissionKey.current) submissionKey.current = newSubmissionKey();
       const response = await fetch("/api/orders", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
