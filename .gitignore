@@ -1,3 +1,29 @@
-.taste-skill/
+# Dependencies and generated output
+/node_modules/
+/dist/
+/.next/
+/.vinext/
+/out/
+next-env.d.ts
+*.tsbuildinfo
+/coverage/
+
+# Local credentials and tool state
+.env*
+.dev.vars*
+*.pem
+/.wrangler/
+/.sites-runtime/
+/.taste-skill/
+/.agents/
+/.codex/
+/outputs/
+/work/
+
+# Package manager and OS files
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
 .DS_Store
 *.tar.gz
