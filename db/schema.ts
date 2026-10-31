@@ -16,6 +16,7 @@ export const menuItems = sqliteTable("menu_items", {
 export const stallSettings = sqliteTable("stall_settings", {
   id: integer("id").primaryKey(),
   paused: integer("paused", { mode: "boolean" }).notNull().default(false),
+  sessionId: integer("session_id").notNull().default(1),
 });
 
 export const orders = sqliteTable("orders", {
@@ -26,11 +27,15 @@ export const orders = sqliteTable("orders", {
   note: text("note").notNull().default(""),
   total: integer("total").notNull(),
   status: text("status").notNull().default("received"),
+  sessionId: integer("session_id").notNull().default(1),
   createdAt: text("created_at").notNull(),
   updatedAt: text("updated_at").notNull(),
+  version: integer("version").notNull().default(0),
+  editNonce: text("edit_nonce"),
   preparingAt: text("preparing_at"),
   readyAt: text("ready_at"),
   collectedAt: text("collected_at"),
+  cancelledAt: text("cancelled_at"),
 });
 
 export const orderLines = sqliteTable("order_lines", {
@@ -39,6 +44,7 @@ export const orderLines = sqliteTable("order_lines", {
   menuItemId: text("menu_item_id").notNull().references(() => menuItems.id),
   name: text("name").notNull(),
   quantity: integer("quantity").notNull(),
+  reservedQuantity: integer("reserved_quantity").notNull().default(0),
   price: integer("price").notNull(),
 });
 

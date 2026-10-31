@@ -30,11 +30,11 @@ export async function POST(request: Request) {
     const timestamp = new Date().toISOString();
     const rateLimit = await orderRateLimitStatement(db, request);
     const statements = [
-      db.prepare("INSERT INTO orders (token, idempotency_key, request_fingerprint, note, total, status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, 'received', ?, ?)").bind(token, idempotencyKey, fingerprint, note, total, timestamp, timestamp),
+      db.prepare("INSERT INTO orders (token, idempotency_key, request_fingerprint, note, total, status, created_at, updated_at, session_id) SELECT ?, ?, ?, ?, ?, 'received', ?, ?, session_id FROM stall_settings WHERE id = 1").bind(token, idempotencyKey, fingerprint, note, total, timestamp, timestamp),
       ...items.map((line) => {
         const item = menu.items.find((entry) => entry.id === line.id)!;
-        return db.prepare("INSERT INTO order_lines (order_id, menu_item_id, name, quantity, price) SELECT id, ?, ?, ?, ? FROM orders WHERE token = ?")
-          .bind(item.id, item.name, line.quantity, item.price, token);
+        return db.prepare("INSERT INTO order_lines (order_id, menu_item_id, name, quantity, reserved_quantity, price) SELECT id, ?, ?, ?, ?, ? FROM orders WHERE token = ?")
+          .bind(item.id, item.name, line.quantity, line.quantity, item.price, token);
       }),
       ...(rateLimit ? [rateLimit] : []),
     ];

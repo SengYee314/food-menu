@@ -1,8 +1,8 @@
 import { ApiError } from "./http";
 import type { MenuItem } from "./stall";
 
-export type OrderStatus = "received" | "preparing" | "ready" | "collected";
-export type OrderLine = { name: string; quantity: number; price: number; menuItemId: string };
+export type OrderStatus = "received" | "preparing" | "ready" | "collected" | "cancelled";
+export type OrderLine = { name: string; quantity: number; reservedQuantity: number; price: number; menuItemId: string };
 export type Order = {
   id: number;
   number: number;
@@ -12,6 +12,7 @@ export type Order = {
   total: number;
   createdAt: string;
   updatedAt: string;
+  version: number;
   preparingAt: string | null;
   readyAt: string | null;
   collectedAt: string | null;
@@ -26,6 +27,7 @@ type OrderRow = {
   total: number;
   created_at: string;
   updated_at: string;
+  version: number;
   preparing_at: string | null;
   ready_at: string | null;
   collected_at: string | null;
@@ -37,10 +39,11 @@ type LineRow = {
   menu_item_id: string;
   name: string;
   quantity: number;
+  reserved_quantity: number;
   price: number;
 };
 
-const orderColumns = "id, token, status, note, total, created_at, updated_at, preparing_at, ready_at, collected_at, request_fingerprint";
+const orderColumns = "id, token, status, note, total, created_at, updated_at, version, preparing_at, ready_at, collected_at, request_fingerprint";
 
 export function formatOrder(row: OrderRow, lines: LineRow[]): Order {
   return {
@@ -52,12 +55,14 @@ export function formatOrder(row: OrderRow, lines: LineRow[]): Order {
     total: row.total,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
+    version: row.version,
     preparingAt: row.preparing_at,
     readyAt: row.ready_at,
     collectedAt: row.collected_at,
     lines: lines.filter((line) => line.order_id === row.id).map((line) => ({
       name: line.name,
       quantity: line.quantity,
+      reservedQuantity: line.reserved_quantity,
       price: line.price,
       menuItemId: line.menu_item_id,
     })),
@@ -67,26 +72,33 @@ export function formatOrder(row: OrderRow, lines: LineRow[]): Order {
 export async function orderByToken(db: D1Database, token: string): Promise<Order | null> {
   const row = await db.prepare(`SELECT ${orderColumns} FROM orders WHERE token = ?`).bind(token).first<OrderRow>();
   if (!row) return null;
-  const lines = await db.prepare("SELECT order_id, menu_item_id, name, quantity, price FROM order_lines WHERE order_id = ? ORDER BY id").bind(row.id).all<LineRow>();
+  const lines = await db.prepare("SELECT order_id, menu_item_id, name, quantity, reserved_quantity, price FROM order_lines WHERE order_id = ? ORDER BY id").bind(row.id).all<LineRow>();
+  return formatOrder(row, lines.results);
+}
+
+export async function orderById(db: D1Database, id: number): Promise<Order | null> {
+  const row = await db.prepare(`SELECT ${orderColumns} FROM orders WHERE id = ?`).bind(id).first<OrderRow>();
+  if (!row) return null;
+  const lines = await db.prepare("SELECT order_id, menu_item_id, name, quantity, reserved_quantity, price FROM order_lines WHERE order_id = ? ORDER BY id").bind(id).all<LineRow>();
   return formatOrder(row, lines.results);
 }
 
 export async function orderByIdempotency(db: D1Database, key: string): Promise<{ order: Order; fingerprint: string } | null> {
   const row = await db.prepare(`SELECT ${orderColumns} FROM orders WHERE idempotency_key = ?`).bind(key).first<OrderRow>();
   if (!row) return null;
-  const lines = await db.prepare("SELECT order_id, menu_item_id, name, quantity, price FROM order_lines WHERE order_id = ? ORDER BY id").bind(row.id).all<LineRow>();
+  const lines = await db.prepare("SELECT order_id, menu_item_id, name, quantity, reserved_quantity, price FROM order_lines WHERE order_id = ? ORDER BY id").bind(row.id).all<LineRow>();
   return { order: formatOrder(row, lines.results), fingerprint: row.request_fingerprint ?? "" };
 }
 
-export async function listOrders(db: D1Database): Promise<Order[]> {
-  const [active, collected] = await db.batch([
-    db.prepare(`SELECT ${orderColumns} FROM orders WHERE status != 'collected' ORDER BY CASE status WHEN 'received' THEN 0 WHEN 'preparing' THEN 1 ELSE 2 END, id ASC`),
-    db.prepare(`SELECT ${orderColumns} FROM orders WHERE status = 'collected' ORDER BY id DESC LIMIT 50`),
+export async function listOrders(db: D1Database, sessionId: number): Promise<Order[]> {
+  const [active, finished] = await db.batch([
+    db.prepare(`SELECT ${orderColumns} FROM orders WHERE session_id = ? AND status IN ('received', 'preparing', 'ready') ORDER BY CASE status WHEN 'received' THEN 0 WHEN 'preparing' THEN 1 ELSE 2 END, id ASC`).bind(sessionId),
+    db.prepare(`SELECT ${orderColumns} FROM orders WHERE session_id = ? AND status IN ('collected', 'cancelled') ORDER BY id DESC LIMIT 50`).bind(sessionId),
   ]);
-  const rows = [...active.results, ...collected.results] as unknown as OrderRow[];
+  const rows = [...active.results, ...finished.results] as unknown as OrderRow[];
   if (!rows.length) return [];
   const placeholders = rows.map(() => "?").join(",");
-  const lines = await db.prepare(`SELECT order_id, menu_item_id, name, quantity, price FROM order_lines WHERE order_id IN (${placeholders}) ORDER BY id`)
+  const lines = await db.prepare(`SELECT order_id, menu_item_id, name, quantity, reserved_quantity, price FROM order_lines WHERE order_id IN (${placeholders}) ORDER BY id`)
     .bind(...rows.map((row) => row.id)).all<LineRow>();
   return rows.map((row) => formatOrder(row, lines.results));
 }

@@ -1,8 +1,9 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import Link from "next/link";
 
-type Status = "received" | "preparing" | "ready" | "collected";
+type Status = "received" | "preparing" | "ready" | "collected" | "cancelled";
 type Order = {
   number: number;
   token: string;
@@ -57,7 +58,7 @@ export default function OrderStatus({ token }: { token: string }) {
       if (!response.ok) throw new Error(response.status === 404 ? "We could not find this order." : "Could not refresh this order.");
       const result = await response.json() as { order: Order };
       const next = result.order as Order;
-      if (next.status === "ready" && previousStatus.current && previousStatus.current !== "ready" && previousStatus.current !== "collected") {
+      if (next.status === "ready" && previousStatus.current && previousStatus.current !== "ready" && previousStatus.current !== "collected" && previousStatus.current !== "cancelled") {
         if (alertEnabledRef.current) playReadyCue();
         if (typeof Notification !== "undefined" && Notification.permission === "granted") {
           new Notification("Your food is ready", { body: `Kawan, Makan Lah! Order #${next.number} is ready for pickup.`, icon: "/favicon.svg" });
@@ -103,7 +104,7 @@ export default function OrderStatus({ token }: { token: string }) {
 
   const currentStep = order ? steps.findIndex((step) => step.key === order.status) : 0;
   return <main className="status-page">
-    <header className="status-header"><a href="/">Kawan, Makan Lah!</a></header>
+    <header className="status-header"><Link href="/">Kawan, Makan Lah!</Link></header>
     <div className="status-container">
       {!order && !error && <p className="status-loading" role="status">Loading your order…</p>}
       {!order && error && <div className="status-failure" role="alert"><h1>Order unavailable</h1><p>{error}</p><button onClick={() => void refresh()}>Try again</button></div>}
@@ -111,27 +112,27 @@ export default function OrderStatus({ token }: { token: string }) {
         <div className={`pickup-ticket ${order.status === "ready" ? "ticket-ready" : ""}`}>
           <span className="ticket-label">Your pickup number</span>
           <strong>#{order.number}</strong>
-          <p>{order.status === "ready" ? "Ready for pickup" : order.status === "collected" ? "Collected. Thank you!" : "We have your order"}</p>
+          <p>{order.status === "ready" ? "Ready for pickup" : order.status === "collected" ? "Collected. Thank you!" : order.status === "cancelled" ? "Order cancelled" : "We have your order"}</p>
         </div>
         <section className="status-section" aria-labelledby="status-heading">
           <div className="status-section-head"><h1 id="status-heading">Order status</h1><span>Updates automatically</span></div>
-          <ol className="status-steps">{steps.map((step, index) => <li key={step.key} className={index < currentStep ? "is-done" : index === currentStep ? "is-current" : ""}>
+          {order.status === "cancelled" ? <p className="cancelled-message">This order was cancelled. Please speak to the stall to place a new order.</p> : <ol className="status-steps">{steps.map((step, index) => <li key={step.key} className={index < currentStep ? "is-done" : index === currentStep ? "is-current" : ""}>
             <span className="step-mark" aria-hidden="true">{index + 1}</span>
             <span>{step.label}</span>
-          </li>)}</ol>
+          </li>)}</ol>}
           {order.status === "ready" && <p className="ready-message">Please show pickup number #{order.number} at the stall and pay when you collect.</p>}
-          {order.status !== "ready" && order.status !== "collected" && <p className="status-help">Keep this page open to see when your food is ready. You can also come back to this link later.</p>}
-          {!alertEnabled && order.status !== "collected" && order.status !== "ready" && <button className="alert-button" onClick={() => void enableAlert()}>Alert me while this page is open</button>}
-          {alertEnabled && order.status !== "collected" && order.status !== "ready" && <p className="alert-enabled">Sound and vibration are on while this page is open.</p>}
+          {order.status !== "ready" && order.status !== "collected" && order.status !== "cancelled" && <p className="status-help">Keep this page open to see when your food is ready. You can also come back to this link later.</p>}
+          {!alertEnabled && order.status !== "collected" && order.status !== "ready" && order.status !== "cancelled" && <button className="alert-button" onClick={() => void enableAlert()}>Alert me while this page is open</button>}
+          {alertEnabled && order.status !== "collected" && order.status !== "ready" && order.status !== "cancelled" && <p className="alert-enabled">Sound and vibration are on while this page is open.</p>}
         </section>
         <section className="status-section" aria-labelledby="summary-heading">
-          <div className="status-section-head"><h2 id="summary-heading">Your order</h2><span>Pay at stall</span></div>
+          <div className="status-section-head"><h2 id="summary-heading">{order.status === "cancelled" ? "Cancelled order" : "Your order"}</h2><span>{order.status === "cancelled" ? "No payment due" : "Pay at stall"}</span></div>
           <div className="status-lines">{order.lines.map((line, index) => <div key={`${line.name}-${index}`}><span>{line.quantity} × {line.name}</span><strong>{won(line.quantity * line.price)}</strong></div>)}</div>
-          <div className="status-total"><span>Total</span><strong>{won(order.total)}</strong></div>
+          <div className="status-total"><span>{order.status === "cancelled" ? "Original total" : "Total"}</span><strong>{order.status === "cancelled" ? <s>{won(order.total)}</s> : won(order.total)}</strong></div>
           {order.note && <p className="status-note"><span>Note:</span> {order.note}</p>}
         </section>
         {error && <p className="stale-warning" role="status">Connection interrupted. Showing the last update. <button onClick={() => void refresh()}>Refresh</button></p>}
-        <div className="status-actions"><button onClick={() => void copyLink()}>{copied ? "Link copied" : "Copy order link"}</button><a href="/">Back to menu</a></div>
+        <div className="status-actions"><button onClick={() => void copyLink()}>{copied ? "Link copied" : "Copy order link"}</button><Link href="/">Back to menu</Link></div>
         {copyError && <p className="copy-error" role="status">{copyError}</p>}
       </>}
     </div>

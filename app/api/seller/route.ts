@@ -7,7 +7,8 @@ export async function GET() {
   try {
     await requireSeller();
     const db = database();
-    const [menu, orders] = await Promise.all([readMenu(db), listOrders(db)]);
+    const menu = await readMenu(db);
+    const orders = await listOrders(db, menu.sessionId);
     return json({ ...menu, orders });
   } catch (error) {
     return errorResponse(error);

@@ -37,8 +37,8 @@ class StockReservationTests(unittest.TestCase):
     def place(self, token, key, rate_key=None):
         with connect(self.path) as database:
             database.execute("BEGIN IMMEDIATE")
-            database.execute("INSERT INTO orders(token, idempotency_key, request_fingerprint, note, total, status, created_at, updated_at) VALUES(?, ?, 'same', '', 4000, 'received', 'now', 'now')", (token, key))
-            database.execute("INSERT INTO order_lines(order_id, menu_item_id, name, quantity, price) SELECT id, 'indomie', 'Indomie', 1, 4000 FROM orders WHERE token = ?", (token,))
+            database.execute("INSERT INTO orders(token, idempotency_key, request_fingerprint, note, total, status, created_at, updated_at, session_id) SELECT ?, ?, 'same', '', 4000, 'received', 'now', 'now', session_id FROM stall_settings WHERE id=1", (token, key))
+            database.execute("INSERT INTO order_lines(order_id, menu_item_id, name, quantity, reserved_quantity, price) SELECT id, 'indomie', 'Indomie', 1, 1, 4000 FROM orders WHERE token = ?", (token,))
             if rate_key:
                 database.execute("INSERT INTO order_rate_limits(key, attempts) VALUES(?, 1) ON CONFLICT(key) DO UPDATE SET attempts = attempts + 1", (rate_key,))
 
@@ -87,6 +87,51 @@ class StockReservationTests(unittest.TestCase):
         with connect(self.path) as database:
             self.assertEqual(database.execute("SELECT remaining FROM menu_items WHERE id='indomie'").fetchone()[0], 6)
             self.assertEqual(database.execute("SELECT count(*) FROM orders").fetchone()[0], 4)
+
+    def test_cancel_returns_reserved_portions_and_excludes_sale(self):
+        with connect(self.path) as database:
+            database.execute("UPDATE menu_items SET opening_stock=3, remaining=3 WHERE id='indomie'")
+        self.place("first", "first-key")
+        with connect(self.path) as database:
+            database.execute("UPDATE orders SET status='cancelled', version=version+1 WHERE token='first'")
+            database.execute("UPDATE order_lines SET reserved_quantity=0 WHERE order_id=(SELECT id FROM orders WHERE token='first')")
+            self.assertEqual(database.execute("SELECT remaining FROM menu_items WHERE id='indomie'").fetchone()[0], 3)
+            self.assertEqual(database.execute("SELECT COUNT(*), COALESCE(SUM(total),0) FROM orders WHERE session_id=1 AND status != 'cancelled'").fetchone(), (0, 0))
+
+    def test_reset_cancels_open_orders_without_double_stock(self):
+        self.place("first", "first-key")
+        with connect(self.path) as database:
+            database.execute("UPDATE orders SET status='cancelled', version=version+1 WHERE session_id=(SELECT session_id FROM stall_settings WHERE id=1) AND status IN ('received','preparing','ready')")
+            database.execute("UPDATE order_lines SET reserved_quantity=0")
+            database.execute("UPDATE menu_items SET remaining=opening_stock, available=1")
+            database.execute("UPDATE stall_settings SET session_id=session_id+1 WHERE id=1")
+            self.assertEqual(database.execute("SELECT remaining FROM menu_items WHERE id='indomie'").fetchone()[0], 1)
+            self.assertEqual(database.execute("SELECT status FROM orders WHERE token='first'").fetchone()[0], "cancelled")
+            self.assertEqual(database.execute("SELECT COUNT(*), COALESCE(SUM(total),0) FROM orders WHERE session_id=2 AND status != 'cancelled'").fetchone(), (0, 0))
+
+    def test_new_session_sales_start_at_zero_then_count_new_orders(self):
+        self.place("first", "first-key")
+        with connect(self.path) as database:
+            database.execute("UPDATE orders SET status='cancelled', version=version+1 WHERE session_id=(SELECT session_id FROM stall_settings WHERE id=1) AND status IN ('received','preparing','ready')")
+            database.execute("UPDATE order_lines SET reserved_quantity=0")
+            database.execute("UPDATE menu_items SET remaining=opening_stock, available=1")
+            database.execute("UPDATE stall_settings SET session_id=session_id+1 WHERE id=1")
+            self.assertEqual(database.execute("SELECT COUNT(*), COALESCE(SUM(total),0) FROM orders WHERE session_id=2 AND status != 'cancelled'").fetchone(), (0, 0))
+        self.place("second", "second-key")
+        with connect(self.path) as database:
+            self.assertEqual(database.execute("SELECT COUNT(*), COALESCE(SUM(total),0) FROM orders WHERE session_id=2 AND status != 'cancelled'").fetchone(), (1, 4000))
+            self.assertEqual(database.execute("SELECT COUNT(*) FROM orders WHERE session_id=1").fetchone()[0], 1)
+
+    def test_reset_keeps_collected_orders_in_history(self):
+        self.place("first", "first-key")
+        with connect(self.path) as database:
+            database.execute("UPDATE orders SET status='collected' WHERE token='first'")
+            database.execute("UPDATE orders SET status='cancelled' WHERE session_id=(SELECT session_id FROM stall_settings WHERE id=1) AND status IN ('received','preparing','ready')")
+            database.execute("UPDATE order_lines SET reserved_quantity=0")
+            database.execute("UPDATE menu_items SET remaining=opening_stock, available=1")
+            database.execute("UPDATE stall_settings SET session_id=session_id+1 WHERE id=1")
+            self.assertEqual(database.execute("SELECT status FROM orders WHERE token='first'").fetchone()[0], "collected")
+            self.assertEqual(database.execute("SELECT COUNT(*) FROM orders WHERE session_id=2").fetchone()[0], 0)
 
 
 if __name__ == "__main__":

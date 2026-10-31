@@ -15,8 +15,8 @@ export type MenuItem = {
 type MenuRow = Omit<MenuItem, "available"> & { available: number; opening_stock: number };
 
 const initialMenu = [
-  { id: "indomie", name: "Indomie", description: "Classic seasoned noodles", category: "Food", image: "/images/indomie.webp", price: 4000, stock: 20 },
-  { id: "indomie-egg", name: "Indomie with egg", description: "Seasoned noodles with egg", category: "Food", image: "/images/indomie-egg.webp", price: 5000, stock: 60 },
+  { id: "indomie", name: "Maggie Goreng", description: "Classic seasoned noodles", category: "Food", image: "/images/indomie.webp", price: 4000, stock: 20 },
+  { id: "indomie-egg", name: "Maggie Goreng w Egg", description: "Seasoned noodles with egg", category: "Food", image: "/images/indomie-egg.webp", price: 5000, stock: 60 },
   { id: "roti-canai", name: "Roti canai", description: "Flaky, warm flatbread", category: "Food", image: "/images/roti-canai.webp", price: 5000, stock: 40 },
   { id: "teh-o-limau-ais", name: "Teh O Limau Ais", description: "Iced tea with lime", category: "Drinks", image: "/images/teh-o-limau-ais.webp", price: 2000, stock: 50 },
   { id: "milo", name: "Milo", description: "Chocolate malt drink", category: "Drinks", image: "/images/milo.webp", price: 2000, stock: 50 },
@@ -36,15 +36,17 @@ export async function ensureStall(db: D1Database): Promise<void> {
   ]);
   await db.batch([
     db.prepare(`INSERT OR IGNORE INTO menu_items (id, name, description, category, image, price, opening_stock, remaining, available) VALUES ${placeholders}`).bind(...bindings),
+    db.prepare("UPDATE menu_items SET name = 'Maggie Goreng' WHERE id = 'indomie' AND name = 'Indomie'"),
+    db.prepare("UPDATE menu_items SET name = 'Maggie Goreng w Egg' WHERE id = 'indomie-egg' AND name = 'Indomie with egg'"),
     db.prepare("INSERT OR IGNORE INTO stall_settings (id, paused) VALUES (1, 0)"),
   ]);
 }
 
-export async function readMenu(db: D1Database): Promise<{ items: MenuItem[]; paused: boolean }> {
+export async function readMenu(db: D1Database): Promise<{ items: MenuItem[]; paused: boolean; sessionId: number }> {
   await ensureStall(db);
   const [menuResult, settingResult] = await db.batch([
     db.prepare("SELECT id, name, description, category, image, price, remaining, available, opening_stock FROM menu_items ORDER BY CASE id WHEN 'indomie' THEN 0 WHEN 'indomie-egg' THEN 1 WHEN 'roti-canai' THEN 2 WHEN 'teh-o-limau-ais' THEN 3 WHEN 'milo' THEN 4 ELSE 5 END"),
-    db.prepare("SELECT paused FROM stall_settings WHERE id = 1"),
+    db.prepare("SELECT paused, session_id FROM stall_settings WHERE id = 1"),
   ]);
   const items = (menuResult.results as unknown as MenuRow[]).map((row) => ({
     id: row.id,
@@ -56,8 +58,8 @@ export async function readMenu(db: D1Database): Promise<{ items: MenuItem[]; pau
     remaining: row.remaining,
     available: Boolean(row.available),
   }));
-  const setting = settingResult.results[0] as { paused?: number } | undefined;
-  return { items, paused: Boolean(setting?.paused) };
+  const setting = settingResult.results[0] as { paused?: number; session_id?: number } | undefined;
+  return { items, paused: Boolean(setting?.paused), sessionId: setting?.session_id ?? 1 };
 }
 
 export function requireMenuItem(items: MenuItem[], id: string): MenuItem {
